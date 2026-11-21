@@ -1,1 +1,198 @@
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CafeFinance AI</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6fa;color:#202938;font-family:Arial,sans-serif}
+header{background:white;padding:24px}
+header h1{margin:0}
+header p{color:#89909d}
+main{max-width:800px;margin:auto;padding:18px}
+h2{font-size:19px;margin-top:24px}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.card,.panel{background:white;padding:17px;border-radius:15px;margin-bottom:12px;box-shadow:0 2px 10px #00000008}
+.card small{color:#858b98}
+.value{font-size:22px;font-weight:bold;margin-top:9px}
+.green{color:#159b67}.red{color:#d94e55}
+input,select,button{width:100%;padding:13px;border:1px solid #dfe3e9;border-radius:10px;font-size:15px;margin-top:9px;background:white}
+button{background:#263650;color:white;border:0;font-weight:bold;cursor:pointer}
+.secondary{background:#edf0f5;color:#263650}
+.item{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #eee;font-size:14px}
+.muted{color:#9298a4;font-size:12px}
+.empty{text-align:center;color:#9298a4;padding:18px}
+.bar{height:8px;background:#edf0f4;border-radius:8px;margin:8px 0 15px;overflow:hidden}
+.bar span{display:block;height:100%;background:#637dbb}
+footer{text-align:center;color:#999;font-size:12px;padding:25px}
+@media(min-width:650px){.cards{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<header>
+<h1>☕ CafeFinance AI</h1>
+<p>Управление финансами твоего кафе</p>
+</header>
+<main>
+<h2>Финансовая панель</h2>
+<select id="period" onchange="render()">
+<option value="all">За всё время</option>
+<option value="today">Сегодня</option>
+<option value="7">Последние 7 дней</option>
+<option value="30">Последние 30 дней</option>
+</select>
+<div class="cards">
+<div class="card"><small>Выручка</small><div class="value green" id="income">0 ₽</div></div>
+<div class="card"><small>Расходы</small><div class="value red" id="expense">0 ₽</div></div>
+<div class="card"><small>Прибыль</small><div class="value" id="profit">0 ₽</div></div>
+</div>
+<h2>Добавить операцию</h2>
+<div class="panel">
+<select id="type">
+<option value="income">Доход</option>
+<option value="expense">Расход</option>
+</select>
+<input id="amount" type="number" min="0.01" step="0.01" placeholder="Сумма в рублях">
+<select id="category">
+<option>Продажи</option>
+<option>Продукты</option>
+<option>Аренда</option>
+<option>Зарплаты</option>
+<option>Коммунальные услуги</option>
+<option>Реклама</option>
+<option>Доставка</option>
+<option>Прочее</option>
+</select>
+<input id="date" type="date">
+<input id="note" placeholder="Комментарий">
+<button onclick="addOperation()">Добавить операцию</button>
+</div>
+<h2>Структура расходов</h2>
+<div class="panel" id="structure"><div class="empty">Пока нет расходов</div></div>
+<h2>История операций</h2>
+<div class="panel">
+<div id="history"><div class="empty">Операций пока нет</div></div>
+<button class="secondary" onclick="exportData()">Скачать отчёт CSV</button>
+</div>
+<h2>Анализ</h2>
+<div class="panel">
+<p class="muted">Автоматический анализ записанных операций</p>
+<div id="analysis">Добавь первые операции.</div>
+</div>
+<footer>CafeFinance AI · Демонстрационная версия</footer>
+</main>
+<script>
+let operations=[];
+try{
+operations=JSON.parse(localStorage.getItem("cafeFinanceData")||"[]");
+if(!Array.isArray(operations))operations=[];
+}catch(e){operations=[];}
+
+document.getElementById("date").value=new Date().toISOString().slice(0,10);
+
+function money(n){
+return new Intl.NumberFormat("ru-RU",{maximumFractionDigits:2}).format(n)+" ₽";
+}
+function safe(s){
+return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function selected(){
+let p=document.getElementById("period").value;
+let now=new Date();
+let today=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+return operations.filter(o=>{
+if(p==="all")return true;
+if(p==="today")return o.date===today;
+let start=new Date(now);
+start.setDate(start.getDate()-Number(p)+1);
+start.setHours(0,0,0,0);
+let d=new Date(o.date+"T00:00:00");
+return d>=start&&d<=now;
+});
+}
+function addOperation(){
+let amount=Number(document.getElementById("amount").value);
+let date=document.getElementById("date").value;
+if(!amount||amount<=0||!date){alert("Укажи сумму и дату");return;}
+operations.push({
+id:Date.now(),
+type:document.getElementById("type").value,
+amount:amount,
+category:document.getElementById("category").value,
+date:date,
+note:document.getElementById("note").value.trim()
+});
+save();
+document.getElementById("amount").value="";
+document.getElementById("note").value="";
+render();
+}
+function removeOperation(id){
+if(!confirm("Удалить операцию?"))return;
+operations=operations.filter(o=>o.id!==id);
+save();
+render();
+}
+function save(){
+localStorage.setItem("cafeFinanceData",JSON.stringify(operations));
+}
+function render(){
+let data=selected();
+let income=data.filter(o=>o.type==="income").reduce((s,o)=>s+o.amount,0);
+let expense=data.filter(o=>o.type==="expense").reduce((s,o)=>s+o.amount,0);
+let profit=income-expense;
+document.getElementById("income").textContent=money(income);
+document.getElementById("expense").textContent=money(expense);
+let p=document.getElementById("profit");
+p.textContent=money(profit);
+p.className="value "+(profit>=0?"green":"red");
+
+let history=document.getElementById("history");
+if(!data.length){
+history.innerHTML='<div class="empty">Операций пока нет</div>';
+}else{
+history.innerHTML=[...data].reverse().map(o=>
+'<div class="item"><div><b>'+safe(o.category)+'</b><br><span class="muted">'+safe(o.date)+(o.note?' · '+safe(o.note):'')+'</span></div><div style="text-align:right"><b class="'+(o.type==="income"?"green":"red")+'">'+(o.type==="income"?"+":"−")+money(o.amount)+'</b><br><span class="muted" style="cursor:pointer" onclick="removeOperation('+o.id+')">Удалить</span></div></div>'
+).join("");
+}
+
+let groups={};
+data.filter(o=>o.type==="expense").forEach(o=>{
+groups[o.category]=(groups[o.category]||0)+o.amount;
+});
+let total=Object.values(groups).reduce((a,b)=>a+b,0);
+document.getElementById("structure").innerHTML=total?
+Object.entries(groups).sort((a,b)=>b[1]-a[1]).map(([name,value])=>
+'<div><div class="item"><span>'+safe(name)+'</span><b>'+money(value)+'</b></div><div class="bar"><span style="width:'+(value/total*100)+'%"></span></div></div>'
+).join(""):'<div class="empty">Пока нет расходов</div>';
+
+let analysis=document.getElementById("analysis");
+if(!data.length){
+analysis.textContent="Добавь первые операции для анализа.";
+}else{
+let message="Выручка: "+money(income)+". Расходы: "+money(expense)+". ";
+message+=profit>=0?"Финансовый результат положительный.":"Расходы превышают выручку.";
+if(expense>0&&income>0)message+=" Расходы составляют "+(expense/income*100).toFixed(1)+"% от выручки.";
+analysis.textContent=message;
+}
+}
+function exportData(){
+if(!operations.length){alert("Нет операций для экспорта");return;}
+let rows=[["Дата","Тип","Категория","Сумма","Комментарий"]];
+operations.forEach(o=>rows.push([o.date,o.type==="income"?"Доход":"Расход",o.category,o.amount,o.note]));
+let csv="\uFEFF"+rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")).join("\n");
+let blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+let url=URL.createObjectURL(blob);
+let a=document.createElement("a");
+a.href=url;
+a.download="CafeFinance-report.csv";
+a.click();
+URL.revokeObjectURL(url);
+}
+render();
+</script>
+</body>
+</html>
+
